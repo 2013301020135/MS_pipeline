@@ -99,8 +99,8 @@ class PulsarNoiseModelPipeline:
         """
         components = {"RN": {"idx": None, "name": "RN", "bin_param": "RN_bin", "posterior_key": "rn_k_dropbin"},
                       "DM": {"idx": 2, "name": "DM", "bin_param": "DM_bin", "posterior_key": "dm_gp_k_dropbin"},
-                      "SV": {"idx": 4, "name": "SV", "bin_param": "SV_bin", "posterior_key": "cn_4.0_gp_k_dropbin"},
-                      "SW": {"idx": None, "name": "SW", "bin_param": "SW_bin", "posterior_key": "sw_k_dropbin"}}
+                      "SV": {"idx": 4, "name": "SV", "bin_param": "SV_bin", "posterior_key": "sv_gp_k_dropbin"},
+                      "SW": {"idx": None, "name": "SW", "bin_param": "SW_bin", "posterior_key": "sw_gp_k_dropbin"}}
         model_parts = model_name.split('+')
         list_comps = [components[part] for part in model_parts if part in components]
         return list_comps
@@ -132,22 +132,22 @@ class PulsarNoiseModelPipeline:
             bin_num = self.get_bin_number(comp["name"], step, bin_numbers)
             if comp["name"] == "RN":
                 if step == 1:
-                    model_parts.append(f"RN,nb={bin_num},dropbin,dropbin_min=10")
+                    model_parts.append(f"RN,nb={bin_num},dropbin")
                 else:
                     model_parts.append(f"RN,nb={bin_num}")
             elif comp["name"] == "DM":
                 if step == 1:
-                    model_parts.append(f"RN,idx=2,nb={bin_num},dropbin,dropbin_min=10")
+                    model_parts.append(f"RN,idx=2,nb={bin_num},dropbin")
                 else:
                     model_parts.append(f"RN,idx=2,nb={bin_num}")
             elif comp["name"] == "SV":
                 if step == 1:
-                    model_parts.append(f"RN,idx=4,nb={bin_num},dropbin,dropbin_min=10")
+                    model_parts.append(f"RN,idx=4,nb={bin_num},dropbin")
                 else:
                     model_parts.append(f"RN,idx=4,nb={bin_num}")
             elif comp["name"] == "SW":  # SW ???
                 if step == 1:
-                    model_parts.append(f"SW,nb={bin_num},dropbin,dropbin_min=10")
+                    model_parts.append(f"SW,nb={bin_num},dropbin")
                 else:
                     model_parts.append(f"SW,nb={bin_num}")
         model_string = "/".join(model_parts)
@@ -398,7 +398,8 @@ class PulsarNoiseModelPipeline:
 
     def _add_bin_selection_corner_plots(self, pdf):
         """Add bin selection corner plots to PDF."""
-        for model in self.models_to_run:
+        all_possible_models = ["RN+DM", "RN+DM+SV", "RN+DM+SW", "RN+DM+SV+SW"]
+        for model in all_possible_models:
             suffix_parts = []
             components = self.get_model_components(model)
             for comp in components:
@@ -410,7 +411,7 @@ class PulsarNoiseModelPipeline:
                 try:
                     img = plt.imread(corner_plot_path)
                     height, width = img.shape[0], img.shape[1]
-                    max_dim = 10  # ????????
+                    max_dim = 10
                     if width > height:
                         fig_width = max_dim
                         fig_height = max_dim * height / width
@@ -421,7 +422,8 @@ class PulsarNoiseModelPipeline:
                     ax = fig.add_axes([0, 0, 1, 1])
                     ax.imshow(img, aspect='auto')
                     ax.axis('off')
-                    plt.tight_layout(pad=0)
+                    plt.suptitle(f"Bin Selection - {model}", fontsize=16, y=0.98)
+                    plt.tight_layout(rect=[0, 0, 1, 0.95])
                     pdf.savefig(fig, bbox_inches='tight', pad_inches=0.1, dpi=300)
                     plt.close(fig)
                 except Exception as e:
@@ -429,6 +431,7 @@ class PulsarNoiseModelPipeline:
                     fig = plt.figure(figsize=(12, 12))
                     plt.text(0.5, 0.5, f"Corner plot not available for {model}\n{model_suffix}",
                              ha='center', va='center', fontsize=16)
+                    plt.title(f"Bin Selection - {model}", fontsize=16)
                     plt.axis('off')
                     pdf.savefig(fig, bbox_inches='tight')
                     plt.close(fig)
@@ -476,10 +479,10 @@ class PulsarNoiseModelPipeline:
             ax.axis('off')
             headers = ['Parameter'] + models
             table = ax.table(cellText=table_data, colLabels=headers, cellLoc='center', loc='center', 
-                             bbox=[0.1, 0.1, 0.9, 0.9])
+                             bbox=[0.05, 0.05, 0.9, 0.9])
             table.auto_set_font_size(False)
-            table.set_fontsize(16)
-            table.scale(1, 1)
+            table.set_fontsize(10)
+            table.scale(2, 1)
             for i in range(len(table_data) + 1):
                 if i > 0:
                     table[(i, 1)].set_facecolor('#E8F5E8')
@@ -492,7 +495,8 @@ class PulsarNoiseModelPipeline:
 
     def _add_model_selection_corner_plots(self, pdf):
         """Add model selection corner plots to PDF."""
-        for model in self.models_to_run:
+        all_possible_models = ["RN+DM", "RN+DM+SV", "RN+DM+SW", "RN+DM+SV+SW"]
+        for model in all_possible_models:
             model_dir = f"{self.kargs['datadir']}/{model}/"
             corner_plots = [f for f in os.listdir(model_dir) if f.startswith(f"cornerplot_{self.kargs['psrname']}_")]
             fixed_bin_plots = [f for f in corner_plots if not any(f"{comp}b" in f for comp in ['RN', 'DM', 'SV', 'SW'])]
@@ -515,13 +519,15 @@ class PulsarNoiseModelPipeline:
                     ax = fig.add_axes([0, 0, 1, 1])
                     ax.imshow(img, aspect='auto')
                     ax.axis('off')
-                    plt.tight_layout(pad=0)
+                    plt.suptitle(f"Model Selection - {model}", fontsize=16, y=0.98)
+                    plt.tight_layout(rect=[0, 0, 1, 0.95])
                     pdf.savefig(fig, bbox_inches='tight', pad_inches=0.1, dpi=300)
                     plt.close(fig)
                 except Exception as e:
                     self.logger.warning(f"Could not add corner plot {corner_plot_path}: {e}")
                     fig = plt.figure(figsize=(12, 12))
                     plt.text(0.5, 0.5, f"Corner plot not available for {model}", ha='center', va='center', fontsize=16)
+                    plt.title(f"Model Selection - {model}", fontsize=16)
                     plt.axis('off')
                     pdf.savefig(fig, bbox_inches='tight')
                     plt.close(fig)
@@ -551,8 +557,11 @@ class PulsarNoiseModelPipeline:
             table_data.append(evidence_row)
             delta_evidence_row = ['Delta log Z']
             for _, row in df.iterrows():
-                delta_evidence = row['log evidence'] - best_evidence
-                delta_evidence_row.append(f"{delta_evidence:.3f}")
+                if row['log evidence'] == best_evidence:
+                    delta_evidence = "0 (best)"
+                else:
+                    delta_evidence = f"{(row['log evidence'] - best_evidence):.3f}"
+                delta_evidence_row.append(delta_evidence)
             table_data.append(delta_evidence_row)
             bayes_factor_row = ['Bayes factor']
             for _, row in df.iterrows():
@@ -595,10 +604,10 @@ class PulsarNoiseModelPipeline:
             ax.axis('off')
             headers = ['Parameter'] + models
             table = ax.table(cellText=table_data, colLabels=headers, cellLoc='center', loc='center',
-                             bbox=[0.1, 0.1, 0.9, 0.9])
+                             bbox=[0.05, 0.05, 0.9, 0.9])
             table.auto_set_font_size(False)
-            table.set_fontsize(16)
-            table.scale(1, 1)
+            table.set_fontsize(10)
+            table.scale(2, 1)
             for i in range(len(table_data) + 1):
                 if i > 0:
                     table[(i, 1)].set_facecolor('#E8F5E8')
@@ -651,4 +660,3 @@ if __name__ == "__main__":
     pipeline = PulsarNoiseModelPipeline(**args_dict)
     success = pipeline.run_pipeline()
 
-    sys.exit(0 if success else 1)
