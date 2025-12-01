@@ -178,21 +178,36 @@ def load_posteriors(posts):
                 p['DM Ncoeff MAP'], p['DM Ncoeff max-like'], p['DM Ncoeff mean'] = e[1], e[2], e[3]
                 p['DM Ncoeff std'], p['DM Ncoeff 03'], p['DM Ncoeff 16'] = e[4], e[5], e[6]
                 p['DM Ncoeff 50'], p['DM Ncoeff 84'], p['DM Ncoeff 97'] = e[7], e[8], e[9]
-            elif "cn_4.0_gp_log10_A" in line:
+            elif "sv_gp_log10_A" in line:
                 e = line.split()
                 p['SV log10amp MAP'], p['SV log10amp max-like'], p['SV log10amp mean'] = e[1], e[2], e[3]
                 p['SV log10amp std'], p['SV log10amp 03'], p['SV log10amp 16'] = e[4], e[5], e[6]
                 p['SV log10amp 50'], p['SV log10amp 84'], p['SV log10amp 97'] = e[7], e[8], e[9]
-            elif "cn_4.0_gp_gamma" in line:
+            elif "sv_gp_gamma" in line:
                 e = line.split()
                 p['SV gamma MAP'], p['SV gamma max-like'], p['SV gamma mean'] = e[1], e[2], e[3]
                 p['SV gamma std'], p['SV gamma 03'], p['SV gamma 16'] = e[4], e[5], e[6]
                 p['SV gamma 50'], p['SV gamma 84'], p['SV gamma 97'] = e[7], e[8], e[9]
-            elif "cn_4.0_gp_k_dropbin" in line:
+            elif "sv_gp_k_dropbin" in line:
                 e = line.split()
                 p['SV Ncoeff MAP'], p['SV Ncoeff max-like'], p['SV Ncoeff mean'] = e[1], e[2], e[3]
                 p['SV Ncoeff std'], p['SV Ncoeff 03'], p['SV Ncoeff 16'] = e[4], e[5], e[6]
                 p['SV Ncoeff 50'], p['SV Ncoeff 84'], p['SV Ncoeff 97'] = e[7], e[8], e[9]
+            elif "sw_gp_log10_A" in line:
+                e = line.split()
+                p['SW log10amp MAP'], p['SW log10amp max-like'], p['SW log10amp mean'] = e[1], e[2], e[3]
+                p['SW log10amp std'], p['SW log10amp 03'], p['SW log10amp 16'] = e[4], e[5], e[6]
+                p['SW log10amp 50'], p['SW log10amp 84'], p['SW log10amp 97'] = e[7], e[8], e[9]
+            elif "sw_gp_gamma" in line:
+                e = line.split()
+                p['SW gamma MAP'], p['SW gamma max-like'], p['SW gamma mean'] = e[1], e[2], e[3]
+                p['SW gamma std'], p['SW gamma 03'], p['SW gamma 16'] = e[4], e[5], e[6]
+                p['SW gamma 50'], p['SW gamma 84'], p['SW gamma 97'] = e[7], e[8], e[9]
+            elif "sw_gp_k_dropbin" in line:
+                e = line.split()
+                p['SW Ncoeff MAP'], p['SW Ncoeff max-like'], p['SW Ncoeff mean'] = e[1], e[2], e[3]
+                p['SW Ncoeff std'], p['SW Ncoeff 03'], p['SW Ncoeff 16'] = e[4], e[5], e[6]
+                p['SW Ncoeff 50'], p['SW Ncoeff 84'], p['SW Ncoeff 97'] = e[7], e[8], e[9]
     return p
 
 
