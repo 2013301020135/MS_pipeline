@@ -53,13 +53,16 @@ def copy_files(**kwargs):
     pkl_file = f"{kwargs['datadir']}/{kwargs['outdir']}/{kwargs['filename']}.pkl"
     param_file = f"{kwargs['datadir']}/{kwargs['outdir']}/{kwargs['filename']}_pars.txt"
     prior_file = f"{kwargs['datadir']}/{kwargs['outdir']}/{kwargs['filename']}_priors.txt"
-    if os.path.exists(f"{kwargs['datadir']}/{kwargs['outdir']}/DynRes.pkl"):
-        shutil.copy(f"{kwargs['datadir']}/{kwargs['outdir']}/DynRes.pkl", pkl_file)
-    if os.path.exists(f"{kwargs['datadir']}/{kwargs['outdir']}/pars.txt"):
-        shutil.copy(f"{kwargs['datadir']}/{kwargs['outdir']}/pars.txt", param_file)
-    if os.path.exists(f"{kwargs['datadir']}/{kwargs['outdir']}/priors.txt"):
-        shutil.copy(f"{kwargs['datadir']}/{kwargs['outdir']}/priors.txt", prior_file)
-    return pkl_file, param_file, prior_file
+    if kwargs['replot']:
+        return pkl_file, param_file, prior_file
+    else:
+        if os.path.exists(f"{kwargs['datadir']}/{kwargs['outdir']}/DynRes.pkl"):
+            shutil.copy(f"{kwargs['datadir']}/{kwargs['outdir']}/DynRes.pkl", pkl_file)
+        if os.path.exists(f"{kwargs['datadir']}/{kwargs['outdir']}/pars.txt"):
+            shutil.copy(f"{kwargs['datadir']}/{kwargs['outdir']}/pars.txt", param_file)
+        if os.path.exists(f"{kwargs['datadir']}/{kwargs['outdir']}/priors.txt"):
+            shutil.copy(f"{kwargs['datadir']}/{kwargs['outdir']}/priors.txt", prior_file)
+        return pkl_file, param_file, prior_file
 
 
 def load_dynesty_results(pklf):
@@ -387,14 +390,11 @@ def plot_corner(pklres, paranames, **kwargs):
     samples, normweights = safe_weights(pklres)
     lh = pklres.logl
     fig = corner.corner(samples, labels=paranames, quantiles=[0.16, 0.5, 0.84], show_titles=True,
-                        title_kwargs={"fontsize": 16}, label_kwargs={"fontsize": 12}, plot_datapoints=False,
+                        title_kwargs={"fontsize": 10}, label_kwargs={"fontsize": 10}, plot_datapoints=False,
                         fill_contours=True, levels=[0.68, 0.95], smooth=1.0)
-    # fig = corner.corner(pklres.samples, weights=normweights, labels=paranames, quantiles=[0.16, 0.5, 0.84],
-    #                     show_titles=True, title_kwargs={"fontsize": 16}, label_kwargs={"fontsize": 12},
-    #                     plot_datapoints=False, fill_contours=True, levels=[0.68, 0.95], smooth=1.0)
     plt.suptitle("Posterior Distributions", fontsize=16)
-    plt.tight_layout()
-    plt.savefig(f"{kwargs['outdir']}/cornerplot_{kwargs['filename']}.png", dpi=300)
+    plt.tight_layout(rect=[0.05, 0.1, 0.95, 0.95])
+    plt.savefig(f"{kwargs['outdir']}/cornerplot_{kwargs['filename']}.png", dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved corner plot: {kwargs['outdir']}/cornerplot_{kwargs['filename']}.png")
 
@@ -467,9 +467,12 @@ if __name__ == "__main__":
     parser.add_option("-e", "--evidence", action="store_true", dest="evidence", default=False,
                       help="If True: Calculate and output the final Bayesian evidence;"
                            "If False: Calculate and output the bin selection evidence.")
+    parser.add_option("--re", "--replot", action="store_true", dest="replot", default=False,
+                      help="If True: Replot and regenerate summary pdf with existing fitting results;" 
+                           "If False: Execute the whole bin selection pipeline normally.")
 
     (options, args) = parser.parse_args()
-    args_keys = ['datadir', 'outdir', 'psrname', 'modelname', 'burn', 'evidence']
+    args_keys = ['datadir', 'outdir', 'psrname', 'modelname', 'burn', 'evidence', 'replot']
     kw_args = {key: getattr(options, key) for key in args_keys if hasattr(options, key)}
     kw_args['filename'] = kw_args['psrname']+"_"+kw_args['modelname']
     kw_args['model'] = None
