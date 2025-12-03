@@ -200,6 +200,8 @@ class PulsarNoiseModelPipeline:
         :param step: the step for the model, 1 for bin selection, 2 for fixed bin numbers
         :param bin_numbers: the number of bins used for noise model
         """
+        if self.kargs['replot']:
+            return True
         output_dir = f"{self.kargs['datadir']}/{model_name}/"
         par_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}_all.par"
         tim_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}_all.tim"
@@ -230,6 +232,8 @@ class PulsarNoiseModelPipeline:
             model_suffix = "+".join(suffix_parts)
             command = ["python", f"{self.kargs['workdir']}/plot_dynesty_results.py", "-o", output_dir,
                        "-p", self.kargs['psrname'], "-m", model_suffix, "-b", str(self.kargs['burn'])]
+            if self.kargs['replot']:
+                command.extend(["--re"])
         else:
             if bin_numbers:
                 suffix_parts = []
@@ -245,6 +249,8 @@ class PulsarNoiseModelPipeline:
                 model_suffix = "final"
             command = ["python", f"{self.kargs['workdir']}/plot_dynesty_results.py", "-o", output_dir,
                        "-p", self.kargs['psrname'], "-m", model_suffix, "-b", str(self.kargs['burn']), "-e"]
+            if self.kargs['replot']:
+                command.extend(["--re"])
         output_file = f"{output_dir}/step{step}_plot_output.txt"
         return self.run_command(command, output_file)
 
@@ -279,14 +285,17 @@ class PulsarNoiseModelPipeline:
         self.logger.info(f"Number of live points: {self.kargs['numlive']}")
         self.logger.info(f"Number of threads: {self.kargs['thread']}")
         self.logger.info(f"Number of maximum observation allowed: {self.kargs['max_obs']}")
-        self.logger.info("Stage 1: Commenting parameter file")
-        if not self.generate_commented_parfile():
-            self.logger.error("Parameter file commenting failed")
-            return False
-        self.logger.info("Stage 2: Generating noise file")
-        if not self.generate_noisefile():
-            self.logger.error("Noise file generation failed")
-            return False
+        if self.kargs['replot']:
+            self.logger.info("Replot: Skip Stage 1 and Stage 2")
+        else:
+            self.logger.info("Stage 1: Commenting parameter file")
+            if not self.generate_commented_parfile():
+                self.logger.error("Parameter file commenting failed")
+                return False
+            self.logger.info("Stage 2: Generating noise file")
+            if not self.generate_noisefile():
+                self.logger.error("Noise file generation failed")
+                return False
         self.logger.info("Stage 3: Fitting all models in parallel")
         processes = []
         progress_queue = Queue()
@@ -327,9 +336,10 @@ class PulsarNoiseModelPipeline:
             try:
                 bin_evidence_df = pd.read_csv(bin_evidence_file)
                 if 'log evidence' in bin_evidence_df.columns and 'Model' in bin_evidence_df.columns:
-                    bin_evidence_df = bin_evidence_df.sort_values('log evidence', ascending=False)
-                    self.logger.info("Bin selection evidence comparison:")
-                    self.logger.info(f"\n{bin_evidence_df[['Model', 'log evidence']].to_string(index=False)}")
+                    best_bin_df = bin_evidence_df.loc[bin_evidence_df.groupby('Model')['log evidence'].idxmax()]
+                    best_bin_evidence_df = best_bin_df.sort_values('log evidence', ascending=False)
+                    self.logger.info("Bin selection evidence comparison (best configuration for each model):")
+                    self.logger.info(f"\n{best_bin_evidence_df[['Model', 'log evidence']].to_string(index=False)}")
                 else:
                     self.logger.warning("Required columns not found in bin evidence file")
             except Exception as e:
@@ -340,18 +350,18 @@ class PulsarNoiseModelPipeline:
             try:
                 final_evidence_df = pd.read_csv(final_evidence_file)
                 if 'log evidence' in final_evidence_df.columns and 'Model' in final_evidence_df.columns:
-                    final_evidence_df = final_evidence_df.sort_values('log evidence', ascending=False)
-                    best_model_row = final_evidence_df.iloc[0]
+                    best_final_df = final_evidence_df.loc[final_evidence_df.groupby('Model')['log evidence'].idxmax()]
+                    best_final_evidence_df = best_final_df.sort_values('log evidence', ascending=False)
+                    best_model_row = best_final_evidence_df.iloc[0]
                     best_model = best_model_row['Model']
                     best_evidence = best_model_row['log evidence']
-                    self.logger.info("Final model evidence comparison:")
+                    self.logger.info("Final model evidence comparison (best configuration for each model):")
                     comparison_data = []
-                    for idx, row in final_evidence_df.iterrows():
+                    for idx, row in best_final_evidence_df.iterrows():
                         model_name = row['Model']
                         evidence = row['log evidence']
                         evidence_diff = evidence - best_evidence
                         if model_name == best_model:
-                            bayes_factor = 1  # Best model compared to itself
                             evidence_diff_str = "0.0 (best)"
                             bayes_factor_str = "1 (reference)"
                         else:
@@ -399,12 +409,35 @@ class PulsarNoiseModelPipeline:
     def _add_bin_selection_corner_plots(self, pdf):
         """Add bin selection corner plots to PDF."""
         all_possible_models = ["RN+DM", "RN+DM+SV", "RN+DM+SW", "RN+DM+SV+SW"]
+        bin_evidence_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}_bin_evidences.csv"
+        best_configurations = {}
+        if os.path.exists(bin_evidence_file):
+            try:
+                bin_evidence_df = pd.read_csv(bin_evidence_file)
+                if 'log evidence' in bin_evidence_df.columns and 'Model' in bin_evidence_df.columns:
+                    best_bin_df = bin_evidence_df.loc[bin_evidence_df.groupby('Model')['log evidence'].idxmax()]
+                    for _, row in best_bin_df.iterrows():
+                        model = row['Model']
+                        bins_config = {}
+                        for comp in ['RN', 'DM', 'SV', 'SW']:
+                            bin_col = f'{comp} bin'
+                            if bin_col in row and pd.notna(row[bin_col]):
+                                bins_config[comp] = int(row[bin_col])
+                        best_configurations[model] = bins_config
+            except Exception as e:
+                self.logger.warning(f"Could not read bin evidence file to get best configurations: {e}")
         for model in all_possible_models:
             suffix_parts = []
             components = self.get_model_components(model)
-            for comp in components:
-                bin_num = self.get_bin_number(comp['name'], 1)
-                suffix_parts.append(f"{comp['name']}b{bin_num}")
+            if model in best_configurations:
+                bins_config = best_configurations[model]
+                for comp in components:
+                    comp_name = comp['name']
+                    if comp_name in bins_config:
+                        bin_num = bins_config[comp_name]
+                    else:
+                        bin_num = self.get_bin_number(comp_name, 1)
+                    suffix_parts.append(f"{comp_name}b{bin_num}")
             model_suffix = "+".join(suffix_parts)
             corner_plot_path = f"{self.kargs['datadir']}/{model}/cornerplot_{self.kargs['psrname']}_{model_suffix}.png"
             if os.path.exists(corner_plot_path):
@@ -419,11 +452,10 @@ class PulsarNoiseModelPipeline:
                         fig_height = max_dim
                         fig_width = max_dim * width / height
                     fig = plt.figure(figsize=(fig_width, fig_height), dpi=300)
-                    ax = fig.add_axes([0, 0, 1, 1])
+                    ax = fig.add_axes([0, 0, 1, 0.95])
                     ax.imshow(img, aspect='auto')
                     ax.axis('off')
                     plt.suptitle(f"Bin Selection - {model}", fontsize=16, y=0.98)
-                    plt.tight_layout(rect=[0, 0, 1, 0.95])
                     pdf.savefig(fig, bbox_inches='tight', pad_inches=0.1, dpi=300)
                     plt.close(fig)
                 except Exception as e:
@@ -440,7 +472,7 @@ class PulsarNoiseModelPipeline:
         """Add bin selection results table to PDF with new structure."""
         bin_evidence_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}_bin_evidences.csv"
         if not os.path.exists(bin_evidence_file):
-            fig = plt.figure(figsize=(12, 12))  # Landscape orientation for wider table
+            fig = plt.figure(figsize=(12, 12))
             plt.text(0.5, 0.5, f"Bin selection evidence data not available", ha='center', va='center', fontsize=16)
             plt.axis('off')
             pdf.savefig(fig, bbox_inches='tight')
@@ -448,7 +480,8 @@ class PulsarNoiseModelPipeline:
             return
         try:
             df = pd.read_csv(bin_evidence_file)
-            df = df.sort_values('log evidence', ascending=False)
+            best_df = df.loc[df.groupby('Model')['log evidence'].idxmax()]
+            df = best_df.sort_values('log evidence', ascending=False)
             best_evidence = df.iloc[0]['log evidence']
             fig = plt.figure(figsize=(12, 12))  # Landscape orientation
             fig.suptitle(f"{self.kargs['psrname']} - Bin Selection Results Summary", fontsize=16, fontweight='bold')
@@ -475,13 +508,23 @@ class PulsarNoiseModelPipeline:
                             ncoeff_str = '--'
                         ncoeff_row.append(ncoeff_str)
                     table_data.append(ncoeff_row)
+                bin_col = f'{comp} bin'
+                if bin_col in best_df.columns:
+                    bin_row = [f'{comp} bins']
+                    for _, row in best_df.iterrows():
+                        if pd.notna(row[bin_col]):
+                            bin_str = f"{int(row[bin_col])}"
+                        else:
+                            bin_str = '--'
+                        bin_row.append(bin_str)
+                    table_data.append(bin_row)
             ax = plt.subplot(111)
             ax.axis('off')
             headers = ['Parameter'] + models
             table = ax.table(cellText=table_data, colLabels=headers, cellLoc='center', loc='center', 
-                             bbox=[0.05, 0.05, 0.9, 0.9])
+                             bbox=[0, 0, 1, 0.95])
             table.auto_set_font_size(False)
-            table.set_fontsize(10)
+            table.set_fontsize(12)
             table.scale(2, 1)
             for i in range(len(table_data) + 1):
                 if i > 0:
@@ -496,14 +539,45 @@ class PulsarNoiseModelPipeline:
     def _add_model_selection_corner_plots(self, pdf):
         """Add model selection corner plots to PDF."""
         all_possible_models = ["RN+DM", "RN+DM+SV", "RN+DM+SW", "RN+DM+SV+SW"]
+        final_evidence_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}_evidences.csv"
+        best_configurations = {}
+        if os.path.exists(final_evidence_file):
+            try:
+                final_evidence_df = pd.read_csv(final_evidence_file)
+                if 'log evidence' in final_evidence_df.columns and 'Model' in final_evidence_df.columns:
+                    best_final_df = final_evidence_df.loc[final_evidence_df.groupby('Model')['log evidence'].idxmax()]
+                    for _, row in best_final_df.iterrows():
+                        model = row['Model']
+                        bins_config = {}
+                        for comp in ['RN', 'DM', 'SV', 'SW']:
+                            bin_col = f'{comp} bin'
+                            if bin_col in row and pd.notna(row[bin_col]):
+                                bins_config[comp] = int(row[bin_col])
+                        best_configurations[model] = bins_config
+            except Exception as e:
+                self.logger.warning(f"Could not read final evidence file to get best configurations: {e}")
         for model in all_possible_models:
             model_dir = f"{self.kargs['datadir']}/{model}/"
-            corner_plots = [f for f in os.listdir(model_dir) if f.startswith(f"cornerplot_{self.kargs['psrname']}_")]
-            fixed_bin_plots = [f for f in corner_plots if not any(f"{comp}b" in f for comp in ['RN', 'DM', 'SV', 'SW'])]
-            if fixed_bin_plots:
-                corner_plot_path = f"{model_dir}/{fixed_bin_plots[0]}"
-            else:
-                corner_plot_path = f"{model_dir}/{corner_plots[0]}" if corner_plots else None
+            corner_plot_path = None
+            if model in best_configurations:
+                bins_config = best_configurations[model]
+                suffix_parts = []
+                components = self.get_model_components(model)
+                for comp in components:
+                    comp_name = comp['name']
+                    if comp_name in bins_config:
+                        bin_num = bins_config[comp_name]
+                    else:
+                        bin_num = self.get_bin_number(comp_name, 1)
+                    suffix_parts.append(f"{comp_name}{bin_num}")
+                model_suffix = "+".join(suffix_parts)
+                corner_plot_path = f"{model_dir}/cornerplot_{self.kargs['psrname']}_{model_suffix}.png"
+            #corner_plots = [f for f in os.listdir(model_dir) if f.startswith(f"cornerplot_{self.kargs['psrname']}_")]
+            #fixed_bin_plots = [f for f in corner_plots if not any(f"{comp}b" in f for comp in ['RN', 'DM', 'SV', 'SW'])]
+            #if fixed_bin_plots:
+            #    corner_plot_path = f"{model_dir}/{fixed_bin_plots[0]}"
+            #else:
+            #    corner_plot_path = f"{model_dir}/{corner_plots[0]}" if corner_plots else None
             if corner_plot_path and os.path.exists(corner_plot_path):
                 try:
                     img = plt.imread(corner_plot_path)
@@ -516,11 +590,10 @@ class PulsarNoiseModelPipeline:
                         fig_height = max_dim
                         fig_width = max_dim * width / height
                     fig = plt.figure(figsize=(fig_width, fig_height), dpi=300)
-                    ax = fig.add_axes([0, 0, 1, 1])
+                    ax = fig.add_axes([0, 0, 1, 0.95])
                     ax.imshow(img, aspect='auto')
                     ax.axis('off')
                     plt.suptitle(f"Model Selection - {model}", fontsize=16, y=0.98)
-                    plt.tight_layout(rect=[0, 0, 1, 0.95])
                     pdf.savefig(fig, bbox_inches='tight', pad_inches=0.1, dpi=300)
                     plt.close(fig)
                 except Exception as e:
@@ -544,7 +617,8 @@ class PulsarNoiseModelPipeline:
             return
         try:
             df = pd.read_csv(final_evidence_file)
-            df = df.sort_values('log evidence', ascending=False)
+            best_df = df.loc[df.groupby('Model')['log evidence'].idxmax()]
+            df = best_df.sort_values('log evidence', ascending=False)
             best_evidence = df.iloc[0]['log evidence']
             fig = plt.figure(figsize=(12, 12))  # Landscape orientation
             fig.suptitle(f"{self.kargs['psrname']} - Model Selection Results Summary", fontsize=16, fontweight='bold')
@@ -604,9 +678,9 @@ class PulsarNoiseModelPipeline:
             ax.axis('off')
             headers = ['Parameter'] + models
             table = ax.table(cellText=table_data, colLabels=headers, cellLoc='center', loc='center',
-                             bbox=[0.05, 0.05, 0.9, 0.9])
+                             bbox=[0, 0, 1, 0.95])
             table.auto_set_font_size(False)
-            table.set_fontsize(10)
+            table.set_fontsize(12)
             table.scale(2, 1)
             for i in range(len(table_data) + 1):
                 if i > 0:
@@ -653,10 +727,12 @@ if __name__ == "__main__":
                         help="The number of thread used in dynesty runs.")
     parser.add_argument("--mobs", "--max-obs", type=int, dest='max_obs', default=100000,
                         help="The maximum number of observations allowed.")
+    parser.add_argument("--re", "--replot", action="store_true", dest="replot", default=False, 
+                        help="If True: Replot and regenerate summary pdf with existing fitting results;"
+                        "If False: Execute the whole bin selection pipeline normally.")
 
     args = parser.parse_args()
     os.makedirs(args.datadir, exist_ok=True)
     args_dict = vars(args)
     pipeline = PulsarNoiseModelPipeline(**args_dict)
     success = pipeline.run_pipeline()
-
