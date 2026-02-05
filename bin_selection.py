@@ -369,7 +369,7 @@ class PulsarNoiseModelPipeline:
                             evidence_diff_str = f"{evidence_diff:.3f} (relative to best)"
                             bayes_factor_str = f"{bayes_factor:.3f} (best/this)"
                         comparison_data.append({'Model': model_name, 'log evidence': f"{evidence:.3f}",
-                                                'Delta log Z': evidence_diff_str, 'Bayes factor': bayes_factor_str})
+                                                'log Z diff': evidence_diff_str, 'Bayes factor': bayes_factor_str})
                     comparison_df = pd.DataFrame(comparison_data)
                     self.logger.info(f"\n{comparison_df.to_string(index=False)}")
                     self.logger.info(f"\nBest model: {best_model}")
@@ -492,7 +492,7 @@ class PulsarNoiseModelPipeline:
                 evidence_str = f"{row['log evidence']:.3f} ± {row['log evidence std']:.3f}"
                 evidence_row.append(evidence_str)
             table_data.append(evidence_row)
-            delta_evidence_row = ['Delta log Z']
+            delta_evidence_row = ['log Z diff']
             for _, row in df.iterrows():
                 delta_evidence = row['log evidence'] - best_evidence
                 delta_evidence_row.append(f"{delta_evidence:.3f}")
@@ -629,7 +629,7 @@ class PulsarNoiseModelPipeline:
                 evidence_str = f"{row['log evidence']:.3f} ± {row['log evidence std']:.3f}"
                 evidence_row.append(evidence_str)
             table_data.append(evidence_row)
-            delta_evidence_row = ['Delta log Z']
+            delta_evidence_row = ['log Z diff']
             for _, row in df.iterrows():
                 if row['log evidence'] == best_evidence:
                     delta_evidence = "0 (best)"
