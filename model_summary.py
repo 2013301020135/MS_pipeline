@@ -142,20 +142,22 @@ class PulsarNoiseModelPDFGenerator:
             table_data.append(delta_evidence_row)
             components = ['RN', 'DM', 'SV', 'SW']
             for comp in components:
+                bin_col = f'{comp} bin'
                 if f'{comp} Ncoeff mean' in best_df.columns and f'{comp} Ncoeff std' in best_df.columns:
                     ncoeff_row = [f'{comp} Ncoeff']
                     for _, row in best_df.iterrows():
                         if pd.notna(row[f'{comp} Ncoeff mean']) and pd.notna(row[f'{comp} Ncoeff std']):
                             ncoeff_str = f"{row[f'{comp} Ncoeff mean']:.1f} ± {row[f'{comp} Ncoeff std']:.1f}"
+                        elif bin_col in row and pd.notna(row[bin_col]):
+                            ncoeff_str = f"{int(row[bin_col])}"
                         else:
                             ncoeff_str = '--'
                         ncoeff_row.append(ncoeff_str)
                     table_data.append(ncoeff_row)
-                bin_col = f'{comp} bin'
                 if bin_col in best_df.columns:
                     bin_row = [f'{comp} bins']
                     for _, row in best_df.iterrows():
-                        if pd.notna(row[bin_col]):
+                        if pd.notna(row[bin_col]) and pd.notna(row[f'{comp} Ncoeff mean']):
                             bin_str = f"{int(row[bin_col])}"
                         else:
                             bin_str = '--'
