@@ -62,7 +62,7 @@ class PulsarNoiseModelPipeline:
         self.logger.info(f"Models to be tested: {models}")
         return models
 
-    def run_command(self, command, output_file=None, **kwargs):
+    def run_command(self, command, output_file=None):
         """Run commands with subprocess and write log files"""
         self.logger.info(f"Execute commands: {' '.join(command)}")
         try:
@@ -82,11 +82,19 @@ class PulsarNoiseModelPipeline:
     def generate_commented_parfile(self):
         """Generate the parameters file after commenting out parameters."""
         par_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}-posttn.par"
+        if not os.path.exists(par_file):
+            src_par = f"{self.kargs['datadir']}/{self.kargs['psrname']}.par"
+            if not os.path.exists(src_par):
+                raise FileNotFoundError(f"Source par file {src_par} not found.")
+            shutil.copy2(src_par, par_file)
+            print(f"Copied {src_par} to {par_file} as base for commenting.")
         command = ["python", f"{self.kargs['workdir']}/comment_posttn.py", "-p", par_file]
         return self.run_command(command)
 
     def generate_noisefile(self):
         """Generate the noisefiles for pulsar from parameters file."""
+        if os.path.exists(os.path.join(f"{self.kargs['datadir']}/noisefiles/", f"{self.kargs['psrname']}.json")):
+            return True
         par_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}-posttn.par"
         os.makedirs(f"{self.kargs['datadir']}/noisefiles/", exist_ok=True)
         command = ["python", f"{self.kargs['workdir']}/make_json.py", "-p", par_file, "-o", "noisefiles/"]
@@ -122,32 +130,37 @@ class PulsarNoiseModelPipeline:
             else:
                 return getattr(self.kargs, f"{comp_name}_bin")
 
-    def build_model_string(self, components, step, bin_numbers=None):
+    def build_model_string(self, components, step, bin_numbers=None, log=False, fitwn=False):
         """Build the string for model in fitting.
 
         :return: model_string: the string describing the model
         """
         model_parts = ["TM/WN,fix,ecorr"]
+        if fitwn:
+            model_parts = ["TM/WN,ecorr"]
+        bin_log = ''
+        if log:
+            bin_log = ',log'
         for comp in components:
             bin_num = self.get_bin_number(comp["name"], step, bin_numbers)
             if comp["name"] == "RN":
                 if step == 1:
-                    model_parts.append(f"RN,nb={bin_num},dropbin")
+                    model_parts.append(f"RN,nb={bin_num},dropbin{bin_log}")
                 else:
                     model_parts.append(f"RN,nb={bin_num}")
             elif comp["name"] == "DM":
                 if step == 1:
-                    model_parts.append(f"RN,idx=2,nb={bin_num},dropbin")
+                    model_parts.append(f"RN,idx=2,nb={bin_num},dropbin{bin_log}")
                 else:
                     model_parts.append(f"RN,idx=2,nb={bin_num}")
             elif comp["name"] == "SV":
                 if step == 1:
-                    model_parts.append(f"RN,idx=4,nb={bin_num},dropbin")
+                    model_parts.append(f"RN,idx=4,nb={bin_num},dropbin{bin_log}")
                 else:
                     model_parts.append(f"RN,idx=4,nb={bin_num}")
             elif comp["name"] == "SW":  # SW ???
                 if step == 1:
-                    model_parts.append(f"SW,nb={bin_num},dropbin")
+                    model_parts.append(f"SW,nb={bin_num},dropbin{bin_log}")
                 else:
                     model_parts.append(f"SW,nb={bin_num}")
         model_string = "/".join(model_parts)
@@ -207,7 +220,7 @@ class PulsarNoiseModelPipeline:
         tim_file = f"{self.kargs['datadir']}/{self.kargs['psrname']}_all.tim"
         os.makedirs(output_dir, exist_ok=True)
         components = self.get_model_components(model_name)
-        model_string = self.build_model_string(components, step, bin_numbers)
+        model_string = self.build_model_string(components, step, bin_numbers, self.kargs['logbin'], self.kargs['fitwn'])
         sampler_config = f"dynesty,nlive={self.kargs['numlive']},Nthread={self.kargs['thread']}"
         command = ["python", f"{self.kargs['entdir']}/enterprise_bayesian_analysis.py", "-o", output_dir,
                    "-p", par_file, "-t", tim_file, "--noisedirs", f"{self.kargs['datadir']}/noisefiles/",
@@ -721,6 +734,10 @@ if __name__ == "__main__":
                         help="The maximum number of bins allowed for SV.")
     parser.add_argument("--swb", "--SW-bin", type=int, dest='SW_bin', default=100,
                         help="The maximum number of bins allowed for SW.")
+    parser.add_argument("--log", "--logbin", action="store_true", dest="logbin", default=False,
+                        help="If True: Use log scale for bin numbers; If False: Use linear scale for bin numbers.")
+    parser.add_argument("--fw", "--fitwn", action="store_true", dest="fitwn", default=False,
+                        help="If True: Fit WN parameters in MCMC; If False: Fix WN parameters in MCMC.")
     parser.add_argument("-n", "--num-live", type=int, dest='numlive', default=2000,
                         help="The number of live points used in dynesty runs.")
     parser.add_argument("-t", "--thread", type=int, dest='thread', default=32,
